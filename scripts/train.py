@@ -227,9 +227,17 @@ def main() -> None:
             vlm_freeze_expected = canonical_freeze_meta(
                 effective_freeze(probe_step, vlm_cfg.freeze, vlm_cfg.freeze_schedule, valid_modules)
             )
+        # Seeding from a model-only converted DCP (load_path set, no prior
+        # checkpoint in `dir`): convert_checkpoint.py writes {"model": ...} only,
+        # so skip the optimizer — a fresh optimizer is correct for continued
+        # pre-training / fine-tuning. Without this, FSDP's get_optimizer_state_dict
+        # materializes an optimizer template and the load demands optimizer keys
+        # the seed never wrote (RuntimeError: Missing key ...optimizer...step).
+        seeding = resume_path is None and bool(config.checkpoint.load_path)
         step, tokens_seen, ckpt_extra_loaded = ckpt_mgr.load(
             path=str(resume_path) if resume_path else None,
             scheduler=scheduler,
+            exclude_keys=["optimizer"] if seeding else None,
             vlm_freeze_expected=vlm_freeze_expected,
         )
         if ckpt_extra_loaded.get("wandb_run_id"):
