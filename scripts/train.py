@@ -541,11 +541,23 @@ def main() -> None:
         from torch.utils.data import DataLoader as TorchDataLoader
 
         if eval_config.dataset_path:
-            eval_dataset = MemoryMappedDataset(
-                data_dir=eval_config.dataset_path,
-                seq_len=tc.seq_len + 1,
-                file_pattern=eval_config.file_pattern,
-            )
+            if config.data.masked_sft:
+                # Completion-masked SFT eval: paired *.tokens.npy / *.labels.npy shards,
+                # seq_len wide (not the flat seq_len+1 window). Using MaskedSftDataset here
+                # makes the eval loss completion-only (prompt/pad = -100), matching training.
+                from kempnerforge.data.sft_dataset import MaskedSftDataset
+
+                eval_dataset = MaskedSftDataset(
+                    data_dir=eval_config.dataset_path,
+                    seq_len=tc.seq_len,
+                    file_pattern=eval_config.file_pattern,
+                )
+            else:
+                eval_dataset = MemoryMappedDataset(
+                    data_dir=eval_config.dataset_path,
+                    seq_len=tc.seq_len + 1,
+                    file_pattern=eval_config.file_pattern,
+                )
             eval_sampler = DistributedSampler(
                 eval_dataset, num_replicas=dp_size, rank=dp_rank, shuffle=False, seed=tc.seed
             )
