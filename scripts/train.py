@@ -395,6 +395,35 @@ def main() -> None:
             f"{len(mixture_dataset):,} total samples"
         )
 
+    elif config.data.masked_sft:
+        # Completion-masked SFT: paired *.tokens.npy / *.labels.npy shards on disk.
+        # Each row is a full example (prompt/pad masked to -100); MaskedSftDataset
+        # pre-shifts like the causal path so loss_fn(logits, labels) with
+        # ignore_index=-100 supervises the completion only. Rows are already
+        # seq_len wide (not the flat-chunk seq_len+1 the MemoryMappedDataset uses).
+        from kempnerforge.data.sft_dataset import MaskedSftDataset
+
+        dataset = MaskedSftDataset(
+            data_dir=config.data.dataset_path,
+            seq_len=tc.seq_len,
+            file_pattern=config.data.file_pattern,
+        )
+        sampler = DistributedSampler(
+            dataset,
+            num_replicas=dp_size,
+            rank=dp_rank,
+            shuffle=True,
+            seed=tc.effective_data_seed,
+        )
+        dataloader = StatefulDataLoader(
+            dataset,
+            batch_size=tc.batch_size,
+            sampler=sampler,
+            config=config.data,
+        )
+        logger.info(
+            f"SFT dataset (completion-masked): {len(dataset):,} examples from {config.data.dataset_path}"
+        )
     elif config.data.dataset_path:
         # Pre-tokenized data on disk (fastest path)
         dataset = MemoryMappedDataset(

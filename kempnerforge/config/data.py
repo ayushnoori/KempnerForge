@@ -66,6 +66,7 @@ class DataConfig:
     hf_image_size: int = 224  # VLM only: target square image size
     hf_streaming: bool = False  # Use streaming (IterableDataset) for large HF datasets
     pack_sequences: bool = False  # Document-aware packing with cross-doc isolation
+    masked_sft: bool = False  # Completion-masked SFT: paired *.tokens.npy/*.labels.npy (MaskedSftDataset)
     # Multi-dataset mixing (overrides dataset_path/hf_dataset_name when non-empty)
     datasets: list[DatasetSource] = field(default_factory=list)
     mix_temperature: float = 1.0  # Temperature for weight scaling (1.0=as-is, >1=uniform)
