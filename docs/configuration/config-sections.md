@@ -102,7 +102,7 @@ Training-loop hyperparameters.
 | `loss_fn` | `str` | `"cross_entropy"` | `loss` registry key (or `"chunked_cross_entropy"`) |
 | `z_loss_weight` | `float` | `0.0` | logit-magnitude regularizer (PaLM uses `1e-4`) |
 | `ce_chunk_size` | `int` | `0` | chunk size for `chunked_cross_entropy` (`0` → auto 4096) |
-| `shutdown_timeout_sec` | `float` | `600.0` | graceful shutdown timeout before forced exit |
+| `shutdown_timeout_sec` | `float` | `100.0` | graceful-shutdown deadline before forced exit; keep **under** the SLURM `--signal=@N` lead (see [SLURM preemption](../resilience/slurm-preemption.md)) |
 | `nccl_health_check_interval` | `int` | `0` | NCCL liveness all-reduce every N steps (`0` = disabled) |
 
 Computed properties: `param_dtype`, `is_fp8`.

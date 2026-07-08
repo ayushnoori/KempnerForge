@@ -33,7 +33,7 @@ Everything in the first column is importable from
 
 ```toml
 [train]
-shutdown_timeout_sec       = 600.0   # ShutdownHandler hard deadline (0 = disabled)
+shutdown_timeout_sec       = 100.0   # ShutdownHandler deadline; keep < SLURM --signal@N lead (0 = disabled)
 nccl_health_check_interval = 0       # NCCL ping every N steps (0 = disabled)
 ```
 
