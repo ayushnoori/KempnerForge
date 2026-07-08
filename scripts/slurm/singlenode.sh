@@ -64,7 +64,31 @@ echo "Overrides:  ${OVERRIDES}"
 echo "============================"
 
 # ---- Launch ----
-uv run torchrun \
+# Background the trainer and forward SIGTERM so SLURM preemption / walltime actually
+# reaches it. `--signal=B:SIGTERM@120` (above) signals THIS batch shell; a foreground
+# torchrun would swallow that signal and the ranks would only die at the later SIGKILL
+# — leaving no emergency checkpoint and the W&B run marked 'crashed'. `setsid` puts the
+# trainer in its own process group so one `kill` hits uv + torchrun + every rank worker
+# (robust to whether `uv run` itself relays signals). torchrun then forwards SIGTERM to
+# the ranks, whose ShutdownHandler saves an emergency checkpoint and marks W&B 'preempted'.
+setsid uv run torchrun \
     --standalone \
     --nproc_per_node="${NGPUS}" \
-    scripts/train.py "${CONFIG}" ${OVERRIDES}
+    scripts/train.py "${CONFIG}" ${OVERRIDES} &
+TRAIN_PID=$!
+
+forward_term() {
+    echo "[singlenode] SIGTERM received — forwarding to trainer group ${TRAIN_PID}"
+    kill -TERM -"${TRAIN_PID}" 2>/dev/null || true
+}
+trap forward_term TERM INT
+
+# `wait` returns >128 when interrupted by the trap, so loop until the child is truly
+# gone. `|| rc=$?` keeps `set -e` from aborting on the signal-terminated exit; the final
+# rc (143 on SIGTERM) is what the requeue chain reads to decide "preempted, resume".
+rc=0
+wait "${TRAIN_PID}" || rc=$?
+while kill -0 "${TRAIN_PID}" 2>/dev/null; do
+    wait "${TRAIN_PID}" || rc=$?
+done
+exit "${rc}"

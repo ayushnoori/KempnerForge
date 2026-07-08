@@ -33,7 +33,11 @@ class TrainConfig:
     loss_fn: str = "cross_entropy"  # Registry key for loss function
     z_loss_weight: float = 0.0  # Logit magnitude regularizer (PaLM uses 1e-4, 0=disabled)
     ce_chunk_size: int = 0  # Token chunk size for chunked_cross_entropy (0=auto 4096)
-    shutdown_timeout_sec: float = 600.0  # Graceful shutdown timeout before forced exit
+    # Graceful-shutdown budget after SIGTERM before KF force-exits. MUST be under the
+    # SLURM `--signal=B:SIGTERM@N` lead time (the SLURM scripts use @120) so KF's own
+    # forced exit beats SLURM's SIGKILL — otherwise a stuck save is hard-killed and the
+    # W&B run shows 'crashed'. 100s leaves a ~20s margin under @120.
+    shutdown_timeout_sec: float = 100.0
     nccl_health_check_interval: int = 0  # Check NCCL health every N steps (0=disabled)
 
     def __post_init__(self) -> None:

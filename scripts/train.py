@@ -1014,6 +1014,10 @@ def main() -> None:
         # Graceful shutdown
         if shutdown_handler.should_shutdown():
             logger.warning(f"Shutdown requested at step {step} — saving emergency checkpoint")
+            # Tell W&B we're preempting BEFORE the (potentially slow) emergency save,
+            # so the run shows 'preempted' rather than 'crashed' even if SIGKILL lands
+            # mid-save. tracker.close() then leaves the run resumable (skips finish()).
+            tracker.mark_preempting()
             ckpt_mgr.save(
                 step=step,
                 tokens_seen=tokens_seen,

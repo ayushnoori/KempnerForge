@@ -209,6 +209,11 @@ class MetricsTracker:
         """Initialize logging backends (call after distributed setup)."""
         self._init_backends(config)
 
+    def mark_preempting(self) -> None:
+        """Mark the run as preempting on all backends (rank-0 no-op if no backends)."""
+        for backend in self._backends:
+            backend.mark_preempting()
+
     def close(self) -> None:
         """Flush and close all logging backends."""
         for backend in self._backends:
@@ -226,6 +231,9 @@ class _LoggingBackend:
     def log(self, metrics: dict[str, float], step: int) -> None:
         raise NotImplementedError
 
+    def mark_preempting(self) -> None:
+        """Signal that the run is being preempted (no-op unless the backend supports it)."""
+
     def close(self) -> None:
         pass
 
@@ -239,6 +247,7 @@ class WandBBackend(_LoggingBackend):
     def __init__(self, config: MetricsConfig) -> None:
         self._config = config
         self._run = None
+        self._preempting = False
 
     def _ensure_init(self) -> None:
         if self._run is not None:
@@ -271,8 +280,30 @@ class WandBBackend(_LoggingBackend):
 
         wandb.log(metrics, step=step)
 
+    def mark_preempting(self) -> None:
+        """Tell W&B this run is being preempted and will resume.
+
+        The backend then shows the run as ``preempting``/``preempted`` instead of
+        ``crashed`` when the process is killed — even if a slow emergency checkpoint
+        is SIGKILLed before ``close()`` runs. Called on SIGTERM (SLURM preemption /
+        walltime), before the emergency checkpoint save. Only meaningful once a run
+        exists (i.e., at least one metric has been logged).
+        """
+        if self._run and self._run is not False:
+            try:
+                self._run.mark_preempting()
+                self._preempting = True
+                logger.info("WandB run marked as preempting (will resume)")
+            except Exception as e:  # older wandb / offline mode may not support it
+                logger.warning(f"wandb mark_preempting() failed: {e}")
+
     def close(self) -> None:
         if self._run and self._run is not False:
+            # A preempted window must stay resumable — finishing it would mark the
+            # run 'finished' and the next window's resume would reopen a closed run.
+            # mark_preempting() already synced the 'preempted' state, so just skip.
+            if self._preempting:
+                return
             import wandb
 
             wandb.finish()
